@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dassubhajit99/ratelimitter.git/internal/limiter"
-	"github.com/dassubhajit99/ratelimitter.git/internal/server"
+	"github.com/dassubhajit99/ratelimitter/internal/limiter"
+	"github.com/dassubhajit99/ratelimitter/internal/server"
 )
 
 type denyLimiter struct {
