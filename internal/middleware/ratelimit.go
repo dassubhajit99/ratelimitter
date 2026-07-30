@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dassubhajit99/ratelimitter.git/internal/limiter"
+	"github.com/dassubhajit99/ratelimitter/internal/limiter"
 )
 
 // RateLimit creates HTTP middleware that checks every request using the

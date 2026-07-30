@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dassubhajit99/ratelimitter.git/internal/limiter"
-	"github.com/dassubhajit99/ratelimitter.git/internal/middleware"
+	"github.com/dassubhajit99/ratelimitter/internal/limiter"
+	"github.com/dassubhajit99/ratelimitter/internal/middleware"
 )
 
 // NewRouter creates the application's HTTP routes and applies middleware.
