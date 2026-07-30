@@ -114,7 +114,7 @@ func (l *TokenBucket) Allow(_ context.Context, key string) (corelimiter.Result, 
 	refilledTokens := currentBucket.tokens + elapsedSeconds*l.refillPerSecond
 
 	// A bucket must never contain more than its capacity.
-	currentBucket.tokens = math.Max(refilledTokens, l.capacity)
+	currentBucket.tokens = math.Min(refilledTokens, l.capacity)
 
 	currentBucket.lastRefil = now
 
