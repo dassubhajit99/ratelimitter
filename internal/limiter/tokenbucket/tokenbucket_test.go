@@ -67,3 +67,82 @@ func TestFullBucketAllowsCapacityThenDenies(t *testing.T) {
 		t.Fatal("fourth request should have been denied")
 	}
 }
+
+func TestBucketRefillsOverTime(t *testing.T) {
+	clock := &fakeClock{
+		current: time.Date(2026,
+			time.January,
+			1,
+			0,
+			0,
+			0,
+			0,
+			time.UTC),
+	}
+
+	// Capacity: two tokens
+	// Refill: two tokens per second
+	rateLimiter, err := NewWithClock(2, 2, clock.Now)
+	if err != nil {
+		t.Fatalf("failed to create limiter: %v", err)
+	}
+	ctx := context.Background()
+
+	// Drain both initial tokens.
+	for requestNumber := 1; requestNumber <= 2; requestNumber++ {
+		result, err := rateLimiter.Allow(ctx, "subhajit")
+
+		if err != nil {
+			t.Fatalf(
+				"request %d returned error: %v",
+				requestNumber,
+				err,
+			)
+		}
+
+		if !result.Allowed {
+			t.Fatalf(
+				"request %d should have been allowed",
+				requestNumber,
+			)
+		}
+	}
+
+	// Bucket is now empty.
+	result, err := rateLimiter.Allow(ctx, "subhajit")
+
+	if err != nil {
+		t.Fatalf(
+			"request returned error: %v",
+
+			err,
+		)
+	}
+
+	if result.Allowed {
+		t.Fatal("request should have been denied while bucket was empty")
+	}
+
+	// Two tokens per second means 500 ms produces one token.
+
+	clock.Advance(500 * time.Millisecond)
+
+	result, err = rateLimiter.Allow(ctx, "subhajit")
+	if err != nil {
+		t.Fatalf("request after refill returned error: %v", err)
+	}
+
+	if !result.Allowed {
+		t.Fatal("request should have been allowed after one token refilled")
+	}
+
+	// We consumed the newly refilled token, so the bucket is empty again.
+	result, err = rateLimiter.Allow(ctx, "subhajit")
+	if err != nil {
+		t.Fatalf("second request after refill returned error: %v", err)
+	}
+
+	if result.Allowed {
+		t.Fatal("second request after refill should have been denied")
+	}
+}

@@ -1,29 +1,22 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/dassubhajit99/ratelimitter/internal/limiter"
+	"github.com/dassubhajit99/ratelimitter/internal/limiter/tokenbucket"
 	"github.com/dassubhajit99/ratelimitter/internal/server"
 )
 
-type denyLimiter struct {
-}
-
-func (denyLimiter) Allow(ctx context.Context, key string) (limiter.Result, error) {
-	return limiter.Result{
-		Allowed:    false,
-		Remaining:  0,
-		RetryAfter: 5 * time.Second,
-	}, nil
-}
-
 func main() {
-	// rateLimiter := limiter.NoopLimiter{}
-	rateLimiter := denyLimiter{}
+	// Allow a burst of 10 requests.
+	// After the burst, refill 2 tokens every second.
+	rateLimiter, err := tokenbucket.New(10, 2)
+
+	if err != nil {
+		log.Fatalf("failed to create rate limiter: %v", err)
+	}
 
 	router := server.NewRouter(rateLimiter)
 
