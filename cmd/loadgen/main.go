@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"sort"
 	"sync"
 	"time"
 )
@@ -89,9 +91,41 @@ func main() {
 
 	collectorDone := make(chan summery, 1)
 
-	// go func() {
-	// 	collectorDone <- coll
-	// }()
+	go func() {
+		collectorDone <- collectResults(results)
+	}()
+
+	fmt.Printf("Starting load test\n")
+	fmt.Printf("URL:         %s\n", *targetURL)
+	fmt.Printf("User:        %s\n", *userID)
+	fmt.Printf("Rate:        %d requests/second\n", *rate)
+	fmt.Printf("Duration:    %s\n", *duration)
+	fmt.Printf("Concurrency: %d\n\n", *concurrency)
+
+	testStartedAt := time.Now()
+
+	runLoadTest(
+		client,
+		*targetURL,
+		*userID,
+		*rate,
+		*duration,
+		testStartedAt,
+		semaphore,
+		results,
+		&requestWG,
+	)
+
+	// Stop creating requests first, then wait for every request that
+	// is already running.
+	requestWG.Wait()
+
+	// No more results will be sent after the WaitGroup reaches zero.
+	close(results)
+
+	testSummary := <-collectorDone
+
+	printSummary(testSummary, time.Since(testStartedAt))
 }
 
 func validateFlags(rate int,
@@ -120,10 +154,6 @@ func validateFlags(rate int,
 	}
 
 	return nil
-}
-
-func collectResults(results <-chan result) {
-
 }
 
 func fireRequest(client *http.Client, targetURL string, userID string, startedAt time.Duration) result {
@@ -240,5 +270,117 @@ func runLoadTest(
 		case <-stopTimer.C:
 			return
 		}
+	}
+}
+
+func collectResults(results <-chan result) summery {
+	collected := summery{
+		statusCounts: make(map[int]int),
+		timeline:     make(map[int]*secondStats),
+	}
+
+	for requestResult := range results {
+		collected.totalRequest++
+		collected.totalLatency += requestResult.latency
+
+		// A request starting at 1.7 seconds belongs to second 1.
+		second := int(requestResult.startedAt.Seconds())
+
+		stats, exits := collected.timeline[second]
+
+		if !exits {
+			stats = &secondStats{}
+			collected.timeline[second] = stats
+		}
+
+		if requestResult.err != nil {
+			collected.errorCount++
+			stats.errors++
+
+			fmt.Fprintf(
+				os.Stderr,
+				"request error: %v\n",
+				requestResult.err,
+			)
+			continue
+		}
+
+		collected.statusCounts[requestResult.statusCode]++
+
+		switch {
+		case requestResult.statusCode >= 200 &&
+			requestResult.statusCode < 300:
+			stats.allowed++
+
+		case requestResult.statusCode == http.StatusTooManyRequests:
+			stats.denied++
+
+		default:
+			stats.other++
+		}
+	}
+	return collected
+}
+
+func printSummary(
+	testSummary summery,
+	actualDuration time.Duration,
+) {
+	fmt.Println("\nPer-second timeline")
+	fmt.Println("-------------------")
+
+	seconds := make([]int, 0, len(testSummary.timeline))
+
+	for second := range testSummary.timeline {
+		seconds = append(seconds, second)
+	}
+
+	sort.Ints(seconds)
+
+	for _, second := range seconds {
+		stats := testSummary.timeline[second]
+
+		fmt.Printf(
+			"sec %-3d allowed=%-4d denied=%-4d other=%-4d errors=%-4d\n",
+			second,
+			stats.allowed,
+			stats.denied,
+			stats.other,
+			stats.errors,
+		)
+	}
+
+	fmt.Println("\nSummary")
+	fmt.Println("-------")
+
+	fmt.Printf("Total requests: %d\n", testSummary.totalRequest)
+	fmt.Printf("Actual time:    %s\n", actualDuration.Round(time.Millisecond))
+
+	statusCodes := make([]int, 0, len(testSummary.statusCounts))
+
+	for statusCode := range testSummary.statusCounts {
+		statusCodes = append(statusCodes, statusCode)
+	}
+
+	sort.Ints(statusCodes)
+
+	for _, statusCode := range statusCodes {
+		fmt.Printf(
+			"HTTP %d:       %d\n",
+			statusCode,
+			testSummary.statusCounts[statusCode],
+		)
+	}
+
+	fmt.Printf("Errors:         %d\n", testSummary.errorCount)
+
+	if testSummary.totalRequest > 0 {
+		averageLatency := testSummary.totalLatency /
+			time.Duration(testSummary.totalRequest)
+
+		fmt.Printf(
+			"Average latency: %s\n",
+			averageLatency.Round(time.Microsecond),
+		)
 	}
 }
