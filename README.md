@@ -34,7 +34,7 @@ Errors:         0
 Average latency: 574µs
 ```
 
-```
+```text
 
 capacity = 10
 refill   = 2 tokens/second
